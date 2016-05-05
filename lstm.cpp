@@ -106,7 +106,7 @@ LSTMState *LSTM::pushState()
     // that aren't needed anymore, and creating room for new states to be pushed.
 
     if(stateArrayPos==0xffffffff)
-        stateArrayPos=0; // Do not increment the position the first time pushLayerState() is called.
+        stateArrayPos=0; // Do not increment the position the first time pushState() is called.
     else
     {
         if(stateArrayPos==stateArraySize-1)
@@ -120,7 +120,7 @@ LSTMState *LSTM::pushState()
         stateArrayPos++;
     }
     // Copy values from previous state, if such a state exists:
-    LSTMState *newState=stateArrayPos>0/*Has previous state?*/?new LSTMState(inputCount,outputCount,getLayerState(1)):new LSTMState(inputCount,outputCount);
+    LSTMState *newState=stateArrayPos>0/*Has previous state?*/?new LSTMState(inputCount,outputCount,getState(1)):new LSTMState(inputCount,outputCount);
     states[stateArrayPos]=newState;
     if(stateArrayPos>backpropagationSteps)
     {
@@ -131,12 +131,12 @@ LSTMState *LSTM::pushState()
     return states[stateArrayPos];
 }
 
-LSTMState *LSTM::getCurrentLayerState()
+LSTMState *LSTM::getCurrentState()
 {
     return states[stateArrayPos];
 }
 
-bool LSTM::hasLayerState(uint32_t stepsBack)
+bool LSTM::hasState(uint32_t stepsBack)
 {
     return stateArrayPos!=0xffffffff&&stepsBack<=__min(backpropagationSteps,stateArrayPos);
 }
@@ -146,7 +146,7 @@ uint32_t LSTM::getAvailableStepsBack()
     return stateArrayPos!=0xffffffff?__min(backpropagationSteps,stateArrayPos):0;
 }
 
-LSTMState *LSTM::getLayerState(uint32_t stepsBack)
+LSTMState *LSTM::getState(uint32_t stepsBack)
 {
     return states[stateArrayPos-stepsBack];
 }
@@ -174,8 +174,8 @@ double *LSTM::process(double *input)
 {
     LSTMState *l=pushState();
     memcpy(l->input,input,inputCount*sizeof(double)); // Store for backpropagation
-    bool hasPreviousLayerState=hasLayerState(1);
-    LSTMState *previousLayerState=hasPreviousLayerState?getLayerState(1):0;
+    bool hasPreviousState=hasState(1);
+    LSTMState *previousState=hasPreviousState?getState(1):0;
     double *output=(double*)malloc(outputCount*sizeof(double));
     for(uint32_t cell=0;cell<outputCount;cell++)
     {
@@ -184,10 +184,10 @@ double *LSTM::process(double *input)
         double forgetGateValueSum=0.0;
         for(uint32_t i=0;i<inputCount;i++)
             forgetGateValueSum+=l->forgetGateWeights[cell][i]*input[i];
-        if(hasPreviousLayerState) // Else each product simply yields 0, eliminating the need to add it to the sum.
+        if(hasPreviousState) // Else each product simply yields 0, eliminating the need to add it to the sum.
         {
             for(uint32_t i=0;i<outputCount;i++)
-                forgetGateValueSum+=l->forgetGateWeights[cell][inputCount+i]*previousLayerState->output[i];
+                forgetGateValueSum+=l->forgetGateWeights[cell][inputCount+i]*previousState->output[i];
         }
         l->forgetGateValues[cell]=sig(forgetGateValueSum+l->forgetGateBiasWeights[cell]);
 
@@ -196,10 +196,10 @@ double *LSTM::process(double *input)
         double inputGateValueSum=0.0;
         for(uint32_t i=0;i<inputCount;i++)
             inputGateValueSum+=l->inputGateWeights[cell][i]*input[i];
-        if(hasPreviousLayerState) // Else each product simply yields 0, eliminating the need to add it to the sum.
+        if(hasPreviousState) // Else each product simply yields 0, eliminating the need to add it to the sum.
         {
             for(uint32_t i=0;i<outputCount;i++)
-                inputGateValueSum+=l->inputGateWeights[cell][inputCount+i]*previousLayerState->output[i];
+                inputGateValueSum+=l->inputGateWeights[cell][inputCount+i]*previousState->output[i];
         }
         l->inputGateValues[cell]=sig(inputGateValueSum+l->inputGateBiasWeights[cell]);
 
@@ -208,10 +208,10 @@ double *LSTM::process(double *input)
         double outputGateValueSum=0.0;
         for(uint32_t i=0;i<inputCount;i++)
             outputGateValueSum+=l->outputGateWeights[cell][i]*input[i];
-        if(hasPreviousLayerState) // Else each product simply yields 0, eliminating the need to add it to the sum.
+        if(hasPreviousState) // Else each product simply yields 0, eliminating the need to add it to the sum.
         {
             for(uint32_t i=0;i<outputCount;i++)
-                outputGateValueSum+=l->outputGateWeights[cell][inputCount+i]*previousLayerState->output[i];
+                outputGateValueSum+=l->outputGateWeights[cell][inputCount+i]*previousState->output[i];
         }
         l->outputGateValues[cell]=sig(outputGateValueSum+l->outputGateBiasWeights[cell]);
 
@@ -220,16 +220,16 @@ double *LSTM::process(double *input)
         double candidateGateValueSum=0.0;
         for(uint32_t i=0;i<inputCount;i++)
             candidateGateValueSum+=l->candidateGateWeights[cell][i]*input[i];
-        if(hasPreviousLayerState) // Else each product simply yields 0, eliminating the need to add it to the sum.
+        if(hasPreviousState) // Else each product simply yields 0, eliminating the need to add it to the sum.
         {
             for(uint32_t i=0;i<outputCount;i++)
-                candidateGateValueSum+=l->candidateGateWeights[cell][inputCount+i]*previousLayerState->output[i];
+                candidateGateValueSum+=l->candidateGateWeights[cell][inputCount+i]*previousState->output[i];
         }
         l->candidateGateValues[cell]=tanh(candidateGateValueSum+l->candidateGateBiasWeights[cell]);
 
         // Calculate new cell state
 
-        l->cellStates[cell]=(hasPreviousLayerState?l->forgetGateValues[cell]*previousLayerState->cellStates[cell]/*Old cell state*/:0.0)+l->inputGateValues[cell]*l->candidateGateValues[cell]; // Store for backpropagation
+        l->cellStates[cell]=(hasPreviousState?l->forgetGateValues[cell]*previousState->cellStates[cell]/*Old cell state*/:0.0)+l->inputGateValues[cell]*l->candidateGateValues[cell]; // Store for backpropagation
 
         // Calculate new output value
 
@@ -258,17 +258,17 @@ void LSTM::learn(double **desiredOutputs)
     bool weightsAllocated=false;
     uint32_t inputAndOutputCount=inputCount+outputCount;
 
-    LSTMState *latestLayerState=getCurrentLayerState();
+    LSTMState *latestState=getCurrentState();
 
-    // This will cycle totalStepCount times, but we need to go backwards, so we use "stepsBack" in combination with "getLayerState(stepsBack)".
+    // This will cycle totalStepCount times, but we need to go backwards, so we use "stepsBack" in combination with "getState(stepsBack)".
     for(uint32_t stepsBack=0;stepsBack<=availableStepsBack;stepsBack++)
     {
-        // 0 = current layer state
-        LSTMState *thisState=getLayerState(stepsBack);
+        // 0 = current state
+        LSTMState *thisState=getState(stepsBack);
         bool hasDeeperState=stepsBack<availableStepsBack; // Or hasNext? Should we use the next value instead?
         bool hasHigherState=stepsBack>0; // Or hasNext? Should we use the next value instead?
-        LSTMState *deeperState=hasDeeperState?getLayerState(stepsBack+1):0;
-        LSTMState *higherState=hasHigherState?getLayerState(stepsBack-1):0;
+        LSTMState *deeperState=hasDeeperState?getState(stepsBack+1):0;
+        LSTMState *higherState=hasHigherState?getState(stepsBack-1):0;
         double *_ds=(double*)malloc(outputCount*sizeof(double));
         double *_do=(double*)malloc(outputCount*sizeof(double));
         double *_di=(double*)malloc(outputCount*sizeof(double));
@@ -347,14 +347,14 @@ void LSTM::learn(double **desiredOutputs)
                     wo_diff[cell][weightInput]=0.0;
                     wg_diff[cell][weightInput]=0.0;
                 }
-                // thisState, not latestLayerState.
+                // thisState, not latestState.
                 wi_diff[cell][weightInput]+=_di_input[cell]*thisState->input[weightInput];
                 wf_diff[cell][weightInput]+=_df_input[cell]*thisState->input[weightInput];
                 wo_diff[cell][weightInput]+=_do_input[cell]*thisState->input[weightInput];
                 wg_diff[cell][weightInput]+=_dg_input[cell]*thisState->input[weightInput];
                 if(!dxcWeightsSet)
                     dxc[weightInput]=0.0;
-                dxc[weightInput]+=latestLayerState->inputGateWeights[cell][weightInput]*_di_input[cell]+latestLayerState->forgetGateWeights[cell][weightInput]*_df_input[cell]+latestLayerState->outputGateWeights[cell][weightInput]*_do_input[cell]+latestLayerState->candidateGateWeights[cell][weightInput]*_dg_input[cell];
+                dxc[weightInput]+=latestState->inputGateWeights[cell][weightInput]*_di_input[cell]+latestState->forgetGateWeights[cell][weightInput]*_df_input[cell]+latestState->outputGateWeights[cell][weightInput]*_do_input[cell]+latestState->candidateGateWeights[cell][weightInput]*_dg_input[cell];
             }
             for(uint32_t weightOutput=0;weightOutput<outputCount;weightOutput++)
             {
@@ -365,7 +365,7 @@ void LSTM::learn(double **desiredOutputs)
                     wo_diff[cell][inputCount+weightOutput]=0.0;
                     wg_diff[cell][inputCount+weightOutput]=0.0;
                 }
-                // deeperState, not stateBeforeLatestLayerState.
+                // deeperState, not stateBeforeLatestState.
                 if(hasDeeperState)
                 {
                     wi_diff[cell][inputCount+weightOutput]+=_di_input[cell]*deeperState->output[weightOutput];
@@ -375,7 +375,7 @@ void LSTM::learn(double **desiredOutputs)
                 }
                 if(!dxcWeightsSet)
                     dxc[inputCount+weightOutput]=0.0;
-                dxc[inputCount+weightOutput]+=latestLayerState->inputGateWeights[cell][inputCount+weightOutput]*_di_input[cell]+latestLayerState->forgetGateWeights[cell][inputCount+weightOutput]*_df_input[cell]+latestLayerState->outputGateWeights[cell][inputCount+weightOutput]*_do_input[cell]+latestLayerState->candidateGateWeights[cell][inputCount+weightOutput]*_dg_input[cell];
+                dxc[inputCount+weightOutput]+=latestState->inputGateWeights[cell][inputCount+weightOutput]*_di_input[cell]+latestState->forgetGateWeights[cell][inputCount+weightOutput]*_df_input[cell]+latestState->outputGateWeights[cell][inputCount+weightOutput]*_do_input[cell]+latestState->candidateGateWeights[cell][inputCount+weightOutput]*_dg_input[cell];
             }
             // bottom_diff_s:
             thisState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToCellStates[cell]=_ds[cell]*thisState->forgetGateValues[cell];
@@ -407,22 +407,22 @@ void LSTM::learn(double **desiredOutputs)
     {
         for(uint32_t inputWeight=0;inputWeight<inputCount;inputWeight++)
         {
-            latestLayerState->inputGateWeights[cell][inputWeight]-=learningRate*wi_diff[cell][inputWeight];
-            latestLayerState->forgetGateWeights[cell][inputWeight]-=learningRate*wf_diff[cell][inputWeight];
-            latestLayerState->outputGateWeights[cell][inputWeight]-=learningRate*wo_diff[cell][inputWeight];
-            latestLayerState->candidateGateWeights[cell][inputWeight]-=learningRate*wg_diff[cell][inputWeight];
+            latestState->inputGateWeights[cell][inputWeight]-=learningRate*wi_diff[cell][inputWeight];
+            latestState->forgetGateWeights[cell][inputWeight]-=learningRate*wf_diff[cell][inputWeight];
+            latestState->outputGateWeights[cell][inputWeight]-=learningRate*wo_diff[cell][inputWeight];
+            latestState->candidateGateWeights[cell][inputWeight]-=learningRate*wg_diff[cell][inputWeight];
         }
         for(uint32_t outputWeight=0;outputWeight<outputCount;outputWeight++)
         {
-            latestLayerState->inputGateWeights[cell][inputCount+outputWeight]-=learningRate*wi_diff[cell][inputCount+outputWeight];
-            latestLayerState->forgetGateWeights[cell][inputCount+outputWeight]-=learningRate*wf_diff[cell][inputCount+outputWeight];
-            latestLayerState->outputGateWeights[cell][inputCount+outputWeight]-=learningRate*wo_diff[cell][inputCount+outputWeight];
-            latestLayerState->candidateGateWeights[cell][inputCount+outputWeight]-=learningRate*wg_diff[cell][inputCount+outputWeight];
+            latestState->inputGateWeights[cell][inputCount+outputWeight]-=learningRate*wi_diff[cell][inputCount+outputWeight];
+            latestState->forgetGateWeights[cell][inputCount+outputWeight]-=learningRate*wf_diff[cell][inputCount+outputWeight];
+            latestState->outputGateWeights[cell][inputCount+outputWeight]-=learningRate*wo_diff[cell][inputCount+outputWeight];
+            latestState->candidateGateWeights[cell][inputCount+outputWeight]-=learningRate*wg_diff[cell][inputCount+outputWeight];
         }
-        latestLayerState->inputGateBiasWeights[cell]-=learningRate*bi_diff[cell];
-        latestLayerState->forgetGateBiasWeights[cell]-=learningRate*bf_diff[cell];
-        latestLayerState->outputGateBiasWeights[cell]-=learningRate*bo_diff[cell];
-        latestLayerState->candidateGateBiasWeights[cell]-=learningRate*bg_diff[cell];
+        latestState->inputGateBiasWeights[cell]-=learningRate*bi_diff[cell];
+        latestState->forgetGateBiasWeights[cell]-=learningRate*bf_diff[cell];
+        latestState->outputGateBiasWeights[cell]-=learningRate*bo_diff[cell];
+        latestState->candidateGateBiasWeights[cell]-=learningRate*bg_diff[cell];
         free(wi_diff[cell]);
         free(wf_diff[cell]);
         free(wo_diff[cell]);

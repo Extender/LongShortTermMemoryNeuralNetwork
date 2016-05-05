@@ -46,10 +46,10 @@ public:
     static void fillDoubleArrayWithRandomValues(double *array,uint32_t size,double from,double to);
 
     LSTMState *pushState();
-    LSTMState *getCurrentLayerState();
-    bool hasLayerState(uint32_t stepsBack);
+    LSTMState *getCurrentState();
+    bool hasState(uint32_t stepsBack);
     uint32_t getAvailableStepsBack();
-    LSTMState *getLayerState(uint32_t stepsBack);
+    LSTMState *getState(uint32_t stepsBack);
 
     // Please note that the cell count is equal to the output count!
     // To have more cells than outputs (essential in most situations, as it makes the network more powerful), you should use the first n required output values only!
