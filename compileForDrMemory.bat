@@ -1,0 +1,1 @@
+g++ main.cpp lstmlayer.cpp lstmlayerstate.cpp io.cpp text.cpp -static-libgcc -static-libstdc++ -ggdb -o LSTM.exe
