@@ -8,7 +8,7 @@ double LSTM::sig(double input)
 
 double LSTM::tanh(double input)
 {
-    // Derivative: 1.0-((tanh(input))^2)
+    // Derivative: 1.0-pow(tanh(input),2.0)
     return (1.0-pow(M_E,-2.0*input))/(1.0+pow(M_E,-2.0*input));
 }
 
@@ -243,10 +243,8 @@ double *LSTM::process(double *input)
 
 void LSTM::learn(double **desiredOutputs)
 {
-    // Check for any non-initialized arrays
-
     uint32_t availableStepsBack=getAvailableStepsBack();
-    // Note that we sum this over all steps, so we do not need the extra time dimension (double**).
+    // Note that we sum this over all steps, so we do not need the extra time dimension.
     double **wi_diff=(double**)malloc(outputCount*sizeof(double*));
     double **wf_diff=(double**)malloc(outputCount*sizeof(double*));
     double **wo_diff=(double**)malloc(outputCount*sizeof(double*));
@@ -269,15 +267,15 @@ void LSTM::learn(double **desiredOutputs)
         bool hasHigherState=stepsBack>0; // Or hasNext? Should we use the next value instead?
         LSTMState *deeperState=hasDeeperState?getState(stepsBack+1):0;
         LSTMState *higherState=hasHigherState?getState(stepsBack-1):0;
-        double *_ds=(double*)malloc(outputCount*sizeof(double));
-        double *_do=(double*)malloc(outputCount*sizeof(double));
-        double *_di=(double*)malloc(outputCount*sizeof(double));
-        double *_dg=(double*)malloc(outputCount*sizeof(double));
-        double *_df=(double*)malloc(outputCount*sizeof(double));
-        double *_di_input=(double*)malloc(outputCount*sizeof(double));
-        double *_df_input=(double*)malloc(outputCount*sizeof(double));
-        double *_do_input=(double*)malloc(outputCount*sizeof(double));
-        double *_dg_input=(double*)malloc(outputCount*sizeof(double));
+        double *_ds=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the cell states
+        double *_do=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the output gate values
+        double *_di=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the input gate values
+        double *_dg=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the candidate gate values
+        double *_df=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the forget gate values
+        double *_di_input=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the values inside the activation function calls of the input gates (e.g. tanh(x) <- x)
+        double *_df_input=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the values inside the activation function calls of the forget gates (e.g. tanh(x) <- x)
+        double *_do_input=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the values inside the activation function calls of the output gates (e.g. tanh(x) <- x)
+        double *_dg_input=(double*)malloc(outputCount*sizeof(double)); // Derivative of the loss function w.r.t. the values inside the activation function calls of the candidate gates (e.g. tanh(x) <- x)
         // top_diff_is: diff_h = s->bottom_diff_h
         // top_diff_is: diff_s = higherState->bottom_diff_s (topmost: 0)
 
@@ -292,17 +290,17 @@ void LSTM::learn(double **desiredOutputs)
         //
         // Here, we have np.dot(self.param.wi.T, di_input)
         // That means:
-        // dxc represents all weights.
-        // Each weight i in dxc has as its value: sum over cells(sum of the four weights of a cell that have the index i (i,f,o,g), each multiplied by their cell's and weight group's (i,f,o, or g) respective derivative w.r.t. the input)).
+        // dxc represents all weights
+        // Each weight i in dxc has as its value: sum over cells(sum of the four weights of a cell that have the index i (i,f,o,g), each multiplied by their cell's and weight group's (i,f,o, or g) respective derivative w.r.t. the input))
 
         double *dxc=(double*)malloc((inputAndOutputCount)*sizeof(double));
         bool dxcWeightsSet=false;
 
         for(uint32_t cell=0;cell<outputCount;cell++)
         {
-            // For each cell:
-            double diff_s=hasHigherState?higherState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToCellStates[cell]:0.0;
-            double diff_h=2.0*(thisState->output[cell]-desiredOutputs[availableStepsBack-stepsBack][cell]); // Taken from bottom_diff, may not be correct!
+            // For each cell
+            double diff_s=hasHigherState?higherState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToCellStates[cell]:0.0; // Cell state diff: backpropagation through time
+            double diff_h=2.0*(thisState->output[cell]-desiredOutputs[availableStepsBack-stepsBack][cell]); //
             if(hasHigherState)
                 diff_h+=higherState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToOutputs[cell];
 
@@ -310,7 +308,7 @@ void LSTM::learn(double **desiredOutputs)
             _do[cell]=thisState->cellStates[cell]*diff_h;
             _di[cell]=thisState->candidateGateValues[cell]*_ds[cell];
             _dg[cell]=thisState->inputGateValues[cell]*_ds[cell];
-            _df[cell]=(hasDeeperState?deeperState->cellStates[cell]:0.0)*_ds[cell]; // This should be correct, because the same thing is used in process(input).
+            _df[cell]=(hasDeeperState?deeperState->cellStates[cell]:0.0)*_ds[cell];
             _di_input[cell]=(1.0-thisState->inputGateValues[cell])*thisState->inputGateValues[cell]*_di[cell];
             _df_input[cell]=(1.0-thisState->forgetGateValues[cell])*thisState->forgetGateValues[cell]*_df[cell];
             _do_input[cell]=(1.0-thisState->outputGateValues[cell])*thisState->outputGateValues[cell]*_do[cell];
@@ -337,7 +335,7 @@ void LSTM::learn(double **desiredOutputs)
                 wg_diff[cell]=(double*)malloc(inputAndOutputCount*sizeof(double));
             }
 
-            // For each weight:
+            // For each weight
             for(uint32_t weightInput=0;weightInput<inputCount;weightInput++)
             {
                 if(!weightsAllocated)
@@ -347,7 +345,7 @@ void LSTM::learn(double **desiredOutputs)
                     wo_diff[cell][weightInput]=0.0;
                     wg_diff[cell][weightInput]=0.0;
                 }
-                // thisState, not latestState.
+                // thisState, not latestState
                 wi_diff[cell][weightInput]+=_di_input[cell]*thisState->input[weightInput];
                 wf_diff[cell][weightInput]+=_df_input[cell]*thisState->input[weightInput];
                 wo_diff[cell][weightInput]+=_do_input[cell]*thisState->input[weightInput];
