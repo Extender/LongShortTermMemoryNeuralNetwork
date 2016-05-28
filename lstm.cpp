@@ -151,16 +151,50 @@ LSTMState *LSTM::getState(uint32_t stepsBack)
     return states[stateArrayPos-stepsBack];
 }
 
-LSTM::LSTM(uint32_t _inputCount, uint32_t _outputCount, uint32_t _backpropagationSteps, double _learningRate)
+LSTM::LSTM(uint32_t _inputCount, uint32_t _outputCount, uint32_t _backpropagationSteps, double _learningRate, double _momentum, double _weightDecay)
 {
     inputCount=_inputCount;
     outputCount=_outputCount;
+    inputAndOutputCount=inputCount+outputCount;
     backpropagationSteps=_backpropagationSteps;
     learningRate=_learningRate;
+    momentum=_momentum;
+    weightDecay=_weightDecay;
 
     stateArraySize=2*backpropagationSteps+1 /*One for the current state.*/;
     stateArrayPos=0xffffffff;
     states=(LSTMState**)malloc(stateArraySize*sizeof(LSTMState*));
+
+    size_t outputCountBasedDoublePointerArraySize=outputCount*sizeof(double*);
+    size_t outputCountBasedDoubleArraySize=outputCount*sizeof(double);
+    size_t outputAndInputCountBasedDoubleArraySize=inputAndOutputCount*sizeof(double);
+    previousInputGateBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
+    previousForgetGateBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
+    previousOutputGateBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
+    previousCandidateGateBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
+    previousInputGateWeightDeltas=(double**)malloc(outputCountBasedDoublePointerArraySize);
+    previousForgetGateWeightDeltas=(double**)malloc(outputCountBasedDoublePointerArraySize);
+    previousOutputGateWeightDeltas=(double**)malloc(outputCountBasedDoublePointerArraySize);
+    previousCandidateGateWeightDeltas=(double**)malloc(outputCountBasedDoublePointerArraySize);
+
+    for(uint32_t cell=0;cell<outputCount;cell++)
+    {
+        previousInputGateBiasWeightDeltas[cell]=0.0;
+        previousForgetGateBiasWeightDeltas[cell]=0.0;
+        previousOutputGateBiasWeightDeltas[cell]=0.0;
+        previousCandidateGateBiasWeightDeltas[cell]=0.0;
+        previousInputGateWeightDeltas[cell]=(double*)malloc(outputAndInputCountBasedDoubleArraySize);
+        previousForgetGateWeightDeltas[cell]=(double*)malloc(outputAndInputCountBasedDoubleArraySize);
+        previousOutputGateWeightDeltas[cell]=(double*)malloc(outputAndInputCountBasedDoubleArraySize);
+        previousCandidateGateWeightDeltas[cell]=(double*)malloc(outputAndInputCountBasedDoubleArraySize);
+        for(uint32_t inputOrOutput=0;inputOrOutput<inputAndOutputCount;inputOrOutput++)
+        {
+            previousInputGateWeightDeltas[cell][inputOrOutput]=0.0;
+            previousForgetGateWeightDeltas[cell][inputOrOutput]=0.0;
+            previousOutputGateWeightDeltas[cell][inputOrOutput]=0.0;
+            previousCandidateGateWeightDeltas[cell][inputOrOutput]=0.0;
+        }
+    }
 }
 
 LSTM::~LSTM()
@@ -168,6 +202,22 @@ LSTM::~LSTM()
     for(uint32_t layer=stateArrayPos-backpropagationSteps;layer<=stateArrayPos;layer++)
         delete states[layer];
     free(states);
+
+    for(uint32_t cell=0;cell<outputCount;cell++)
+    {
+        free(previousInputGateWeightDeltas[cell]);
+        free(previousForgetGateWeightDeltas[cell]);
+        free(previousOutputGateWeightDeltas[cell]);
+        free(previousCandidateGateWeightDeltas[cell]);
+    }
+    free(previousInputGateBiasWeightDeltas);
+    free(previousForgetGateBiasWeightDeltas);
+    free(previousOutputGateBiasWeightDeltas);
+    free(previousCandidateGateBiasWeightDeltas);
+    free(previousInputGateWeightDeltas);
+    free(previousForgetGateWeightDeltas);
+    free(previousOutputGateWeightDeltas);
+    free(previousCandidateGateWeightDeltas);
 }
 
 double *LSTM::process(double *input)
@@ -405,22 +455,70 @@ void LSTM::learn(double **desiredOutputs)
     {
         for(uint32_t inputWeight=0;inputWeight<inputCount;inputWeight++)
         {
-            latestState->inputGateWeights[cell][inputWeight]-=learningRate*wi_diff[cell][inputWeight];
-            latestState->forgetGateWeights[cell][inputWeight]-=learningRate*wf_diff[cell][inputWeight];
-            latestState->outputGateWeights[cell][inputWeight]-=learningRate*wo_diff[cell][inputWeight];
-            latestState->candidateGateWeights[cell][inputWeight]-=learningRate*wg_diff[cell][inputWeight];
+            double previousInputGateWeightDelta=previousInputGateWeightDeltas[cell][inputWeight];
+            double previousForgetGateWeightDelta=previousForgetGateWeightDeltas[cell][inputWeight];
+            double previousOutputGateWeightDelta=previousOutputGateWeightDeltas[cell][inputWeight];
+            double previousCandidateGateWeightDelta=previousCandidateGateWeightDeltas[cell][inputWeight];
+            double currentInputGateWeight=latestState->inputGateWeights[cell][inputWeight];
+            double currentForgetGateWeight=latestState->forgetGateWeights[cell][inputWeight];
+            double currentOutputGateWeight=latestState->outputGateWeights[cell][inputWeight];
+            double currentCandidateGateWeight=latestState->candidateGateWeights[cell][inputWeight];
+            double thisInputGateWeightDelta=(1.0-momentum)*-learningRate*wi_diff[cell][inputWeight]+momentum*previousInputGateWeightDelta-weightDecay*currentInputGateWeight;
+            double thisForgetGateWeightDelta=(1.0-momentum)*-learningRate*wf_diff[cell][inputWeight]+momentum*previousForgetGateWeightDelta-weightDecay*currentForgetGateWeight;
+            double thisOutputGateWeightDelta=(1.0-momentum)*-learningRate*wo_diff[cell][inputWeight]+momentum*previousOutputGateWeightDelta-weightDecay*currentOutputGateWeight;
+            double thisCandidateGateWeightDelta=(1.0-momentum)*-learningRate*wg_diff[cell][inputWeight]+momentum*previousCandidateGateWeightDelta-weightDecay*currentCandidateGateWeight;
+            latestState->inputGateWeights[cell][inputWeight]+=thisInputGateWeightDelta;
+            latestState->forgetGateWeights[cell][inputWeight]+=thisForgetGateWeightDelta;
+            latestState->outputGateWeights[cell][inputWeight]+=thisOutputGateWeightDelta;
+            latestState->candidateGateWeights[cell][inputWeight]+=thisCandidateGateWeightDelta;
+            previousInputGateWeightDeltas[cell][inputWeight]=thisInputGateWeightDelta;
+            previousForgetGateWeightDeltas[cell][inputWeight]=thisForgetGateWeightDelta;
+            previousOutputGateWeightDeltas[cell][inputWeight]=thisOutputGateWeightDelta;
+            previousCandidateGateWeightDeltas[cell][inputWeight]=thisCandidateGateWeightDelta;
         }
         for(uint32_t outputWeight=0;outputWeight<outputCount;outputWeight++)
         {
-            latestState->inputGateWeights[cell][inputCount+outputWeight]-=learningRate*wi_diff[cell][inputCount+outputWeight];
-            latestState->forgetGateWeights[cell][inputCount+outputWeight]-=learningRate*wf_diff[cell][inputCount+outputWeight];
-            latestState->outputGateWeights[cell][inputCount+outputWeight]-=learningRate*wo_diff[cell][inputCount+outputWeight];
-            latestState->candidateGateWeights[cell][inputCount+outputWeight]-=learningRate*wg_diff[cell][inputCount+outputWeight];
+            double previousInputGateWeightDelta=previousInputGateWeightDeltas[cell][inputCount+outputWeight];
+            double previousForgetGateWeightDelta=previousForgetGateWeightDeltas[cell][inputCount+outputWeight];
+            double previousOutputGateWeightDelta=previousOutputGateWeightDeltas[cell][inputCount+outputWeight];
+            double previousCandidateGateWeightDelta=previousCandidateGateWeightDeltas[cell][inputCount+outputWeight];
+            double currentInputGateWeight=latestState->inputGateWeights[cell][inputCount+outputWeight];
+            double currentForgetGateWeight=latestState->forgetGateWeights[cell][inputCount+outputWeight];
+            double currentOutputGateWeight=latestState->outputGateWeights[cell][inputCount+outputWeight];
+            double currentCandidateGateWeight=latestState->candidateGateWeights[cell][inputCount+outputWeight];
+            double thisInputGateWeightDelta=(1.0-momentum)*-learningRate*wi_diff[cell][inputCount+outputWeight]+momentum*previousInputGateWeightDelta-weightDecay*currentInputGateWeight;
+            double thisForgetGateWeightDelta=(1.0-momentum)*-learningRate*wf_diff[cell][inputCount+outputWeight]+momentum*previousForgetGateWeightDelta-weightDecay*currentForgetGateWeight;
+            double thisOutputGateWeightDelta=(1.0-momentum)*-learningRate*wo_diff[cell][inputCount+outputWeight]+momentum*previousOutputGateWeightDelta-weightDecay*currentOutputGateWeight;
+            double thisCandidateGateWeightDelta=(1.0-momentum)*-learningRate*wg_diff[cell][inputCount+outputWeight]+momentum*previousCandidateGateWeightDelta-weightDecay*currentCandidateGateWeight;
+            latestState->inputGateWeights[cell][inputCount+outputWeight]+=thisInputGateWeightDelta;
+            latestState->forgetGateWeights[cell][inputCount+outputWeight]+=thisForgetGateWeightDelta;
+            latestState->outputGateWeights[cell][inputCount+outputWeight]+=thisOutputGateWeightDelta;
+            latestState->candidateGateWeights[cell][inputCount+outputWeight]+=thisCandidateGateWeightDelta;
+            previousInputGateWeightDeltas[cell][inputCount+outputWeight]=thisInputGateWeightDelta;
+            previousForgetGateWeightDeltas[cell][inputCount+outputWeight]=thisForgetGateWeightDelta;
+            previousOutputGateWeightDeltas[cell][inputCount+outputWeight]=thisOutputGateWeightDelta;
+            previousCandidateGateWeightDeltas[cell][inputCount+outputWeight]=thisCandidateGateWeightDelta;
         }
-        latestState->inputGateBiasWeights[cell]-=learningRate*bi_diff[cell];
-        latestState->forgetGateBiasWeights[cell]-=learningRate*bf_diff[cell];
-        latestState->outputGateBiasWeights[cell]-=learningRate*bo_diff[cell];
-        latestState->candidateGateBiasWeights[cell]-=learningRate*bg_diff[cell];
+        double previousInputGateBiasWeightDelta=previousInputGateBiasWeightDeltas[cell];
+        double previousForgetGateBiasWeightDelta=previousForgetGateBiasWeightDeltas[cell];
+        double previousOutputGateBiasWeightDelta=previousOutputGateBiasWeightDeltas[cell];
+        double previousCandidateGateBiasWeightDelta=previousCandidateGateBiasWeightDeltas[cell];
+        double currentInputGateBiasWeight=latestState->inputGateBiasWeights[cell];
+        double currentForgetGateBiasWeight=latestState->forgetGateBiasWeights[cell];
+        double currentOutputGateBiasWeight=latestState->outputGateBiasWeights[cell];
+        double currentCandidateGateBiasWeight=latestState->candidateGateBiasWeights[cell];
+        double thisInputGateBiasWeightDelta=(1.0-momentum)*-learningRate*bi_diff[cell]+momentum*previousInputGateBiasWeightDelta-weightDecay*currentInputGateBiasWeight;
+        double thisForgetGateBiasWeightDelta=(1.0-momentum)*-learningRate*bf_diff[cell]+momentum*previousForgetGateBiasWeightDelta-weightDecay*currentForgetGateBiasWeight;
+        double thisOutputGateBiasWeightDelta=(1.0-momentum)*-learningRate*bo_diff[cell]+momentum*previousOutputGateBiasWeightDelta-weightDecay*currentOutputGateBiasWeight;
+        double thisCandidateGateBiasWeightDelta=(1.0-momentum)*-learningRate*bg_diff[cell]+momentum*previousCandidateGateBiasWeightDelta-weightDecay*currentCandidateGateBiasWeight;
+        latestState->inputGateBiasWeights[cell]+=thisInputGateBiasWeightDelta;
+        latestState->forgetGateBiasWeights[cell]+=thisForgetGateBiasWeightDelta;
+        latestState->outputGateBiasWeights[cell]+=thisOutputGateBiasWeightDelta;
+        latestState->candidateGateBiasWeights[cell]+=thisCandidateGateBiasWeightDelta;
+        previousInputGateBiasWeightDeltas[cell]=thisInputGateBiasWeightDelta;
+        previousForgetGateBiasWeightDeltas[cell]=thisForgetGateBiasWeightDelta;
+        previousOutputGateBiasWeightDeltas[cell]=thisOutputGateBiasWeightDelta;
+        previousCandidateGateBiasWeightDeltas[cell]=thisCandidateGateBiasWeightDelta;
         free(wi_diff[cell]);
         free(wf_diff[cell]);
         free(wo_diff[cell]);

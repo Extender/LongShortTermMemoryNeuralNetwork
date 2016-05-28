@@ -60,7 +60,9 @@ int main(int argc, char *argv[])
     uint32_t effectiveOutputCount=outputCount+additionalMemoryCellCount;
     uint32_t backpropagationSteps=3;
     double learningRate=0.1; // Do not set the learning rate too high, or else the weights may explode!
-    LSTM *lstm=new LSTM(inputCount,effectiveOutputCount,backpropagationSteps,learningRate);
+    double momentum=0.9;
+    double weightDecay=0.0001;
+    LSTM *lstm=new LSTM(inputCount,effectiveOutputCount,backpropagationSteps,learningRate,momentum,weightDecay);
     uint64_t cycle=0;
     char *str;
     double **desiredOutputs=(double**)malloc((backpropagationSteps+1)*sizeof(double*));

@@ -24,9 +24,21 @@ public:
     uint32_t stateArraySize;
     LSTMState **states; // Stores previous iterations
 
+    double **previousForgetGateWeightDeltas;
+    double **previousInputGateWeightDeltas;
+    double **previousOutputGateWeightDeltas;
+    double **previousCandidateGateWeightDeltas;
+    double *previousForgetGateBiasWeightDeltas;
+    double *previousInputGateBiasWeightDeltas;
+    double *previousOutputGateBiasWeightDeltas;
+    double *previousCandidateGateBiasWeightDeltas;
+
     double learningRate;
+    double momentum;
+    double weightDecay;
     uint32_t inputCount;
     uint32_t outputCount;
+    uint32_t inputAndOutputCount;
     uint32_t backpropagationSteps;
 
     static double sig(double input); // sigmoid function
@@ -53,7 +65,7 @@ public:
 
     // Please note that the cell count is equal to the output count!
     // To have more cells than outputs (essential in most situations, as it makes the network more powerful), you should use the first n required output values only!
-    LSTM(uint32_t _inputCount,uint32_t _outputCount,uint32_t _backpropagationSteps,double _learningRate);
+    LSTM(uint32_t _inputCount,uint32_t _outputCount,uint32_t _backpropagationSteps,double _learningRate,double _momentum,double _weightDecay);
     ~LSTM();
 
     double *process(double *input);

@@ -35,10 +35,10 @@ LSTMState::LSTMState(uint32_t _inputCount, uint32_t _outputCount, LSTMState *cop
         srand(time(NULL));
         for(uint32_t cell=0;cell<outputCount;cell++)
         {
-            forgetGateBiasWeights[cell]=-0.1+0.2*((double)rand()/(double)RAND_MAX);
-            inputGateBiasWeights[cell]=-0.1+0.2*((double)rand()/(double)RAND_MAX);
-            outputGateBiasWeights[cell]=-0.1+0.2*((double)rand()/(double)RAND_MAX);
-            candidateGateBiasWeights[cell]=-0.1+0.2*((double)rand()/(double)RAND_MAX);
+            forgetGateBiasWeights[cell]=0.0;
+            inputGateBiasWeights[cell]=0.0;
+            outputGateBiasWeights[cell]=0.0;
+            candidateGateBiasWeights[cell]=0.0;
 
             forgetGateWeights[cell]=(double*)malloc(inputAndOutputBasedDoubleArraySize);
             inputGateWeights[cell]=(double*)malloc(inputAndOutputBasedDoubleArraySize);
