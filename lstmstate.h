@@ -14,10 +14,10 @@ public:
     double **inputGateWeights;
     double **outputGateWeights;
     double **candidateGateWeights;
-    double *forgetGateBiasWeights;
-    double *inputGateBiasWeights;
-    double *outputGateBiasWeights;
-    double *candidateGateBiasWeights;
+    double *forgetGateValueSumBiasWeights;
+    double *inputGateValueSumBiasWeights;
+    double *outputGateValueSumBiasWeights;
+    double *candidateGateValueSumBiasWeights;
 
     double *forgetGateValues;
     double *inputGateValues;
@@ -31,9 +31,9 @@ public:
     uint32_t inputCount;
     uint32_t outputCount;
 
-    double *bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToCellStates; // bottom_diff_s
-    double *bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToOutputs; // bottom_diff_h
-    double *bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToInputs; // bottom_diff_x
+    double *bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastCellStates; // bottom_diff_s
+    double *bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastOutputs; // bottom_diff_h
+    double *bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToInputs; // bottom_diff_x
 
     LSTMState(uint32_t _inputCount,uint32_t _outputCount,LSTMState *copyFrom=0);
     void freeMemory();

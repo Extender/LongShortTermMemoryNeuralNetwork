@@ -22,23 +22,23 @@ LSTMState::LSTMState(uint32_t _inputCount, uint32_t _outputCount, LSTMState *cop
     inputGateValues=(double*)malloc(outputBasedDoubleArraySize);
     outputGateValues=(double*)malloc(outputBasedDoubleArraySize);
     candidateGateValues=(double*)malloc(outputBasedDoubleArraySize);
-    forgetGateBiasWeights=(double*)malloc(outputBasedDoubleArraySize);
-    inputGateBiasWeights=(double*)malloc(outputBasedDoubleArraySize);
-    outputGateBiasWeights=(double*)malloc(outputBasedDoubleArraySize);
-    candidateGateBiasWeights=(double*)malloc(outputBasedDoubleArraySize);
+    forgetGateValueSumBiasWeights=(double*)malloc(outputBasedDoubleArraySize);
+    inputGateValueSumBiasWeights=(double*)malloc(outputBasedDoubleArraySize);
+    outputGateValueSumBiasWeights=(double*)malloc(outputBasedDoubleArraySize);
+    candidateGateValueSumBiasWeights=(double*)malloc(outputBasedDoubleArraySize);
     // The derivatives do not need to be initialized.
-    bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToCellStates=(double*)malloc(outputBasedDoubleArraySize); // bottom_diff_s
-    bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToOutputs=(double*)malloc(outputBasedDoubleArraySize); // bottom_diff_h
-    bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToInputs=(double*)malloc(outputBasedDoubleArraySize); // bottom_diff_x
+    bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastCellStates=(double*)malloc(outputBasedDoubleArraySize); // bottom_diff_s
+    bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastOutputs=(double*)malloc(outputBasedDoubleArraySize); // bottom_diff_h
+    bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToInputs=(double*)malloc(outputBasedDoubleArraySize); // bottom_diff_x
     if(copyFrom==0)
     {
         srand(time(NULL));
         for(uint32_t cell=0;cell<outputCount;cell++)
         {
-            forgetGateBiasWeights[cell]=0.0;
-            inputGateBiasWeights[cell]=0.0;
-            outputGateBiasWeights[cell]=0.0;
-            candidateGateBiasWeights[cell]=0.0;
+            forgetGateValueSumBiasWeights[cell]=0.0;
+            inputGateValueSumBiasWeights[cell]=0.0;
+            outputGateValueSumBiasWeights[cell]=0.0;
+            candidateGateValueSumBiasWeights[cell]=0.0;
 
             forgetGateWeights[cell]=(double*)malloc(inputAndOutputBasedDoubleArraySize);
             inputGateWeights[cell]=(double*)malloc(inputAndOutputBasedDoubleArraySize);
@@ -56,10 +56,10 @@ LSTMState::LSTMState(uint32_t _inputCount, uint32_t _outputCount, LSTMState *cop
     else
     {
         // Copy the one-dimensional bias weight arrays using memcpy:
-        memcpy(forgetGateBiasWeights,copyFrom->forgetGateBiasWeights,outputBasedDoubleArraySize);
-        memcpy(inputGateBiasWeights,copyFrom->inputGateBiasWeights,outputBasedDoubleArraySize);
-        memcpy(outputGateBiasWeights,copyFrom->outputGateBiasWeights,outputBasedDoubleArraySize);
-        memcpy(candidateGateBiasWeights,copyFrom->candidateGateBiasWeights,outputBasedDoubleArraySize);
+        memcpy(forgetGateValueSumBiasWeights,copyFrom->forgetGateValueSumBiasWeights,outputBasedDoubleArraySize);
+        memcpy(inputGateValueSumBiasWeights,copyFrom->inputGateValueSumBiasWeights,outputBasedDoubleArraySize);
+        memcpy(outputGateValueSumBiasWeights,copyFrom->outputGateValueSumBiasWeights,outputBasedDoubleArraySize);
+        memcpy(candidateGateValueSumBiasWeights,copyFrom->candidateGateValueSumBiasWeights,outputBasedDoubleArraySize);
         // Create deep copies of the two-dimensional weight arrays:
         for(uint32_t cell=0;cell<outputCount;cell++)
         {
@@ -92,17 +92,17 @@ void LSTMState::freeMemory()
     free(inputGateWeights);
     free(outputGateWeights);
     free(candidateGateWeights);
-    free(forgetGateBiasWeights);
-    free(inputGateBiasWeights);
-    free(outputGateBiasWeights);
-    free(candidateGateBiasWeights);
+    free(forgetGateValueSumBiasWeights);
+    free(inputGateValueSumBiasWeights);
+    free(outputGateValueSumBiasWeights);
+    free(candidateGateValueSumBiasWeights);
     free(forgetGateValues);
     free(inputGateValues);
     free(outputGateValues);
     free(candidateGateValues);
-    free(bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToCellStates);
-    free(bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToInputs);
-    free(bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToOutputs);
+    free(bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastCellStates);
+    free(bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToInputs);
+    free(bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastOutputs);
 }
 
 LSTMState::~LSTMState()

@@ -28,10 +28,10 @@ public:
     double **previousInputGateWeightDeltas;
     double **previousOutputGateWeightDeltas;
     double **previousCandidateGateWeightDeltas;
-    double *previousForgetGateBiasWeightDeltas;
-    double *previousInputGateBiasWeightDeltas;
-    double *previousOutputGateBiasWeightDeltas;
-    double *previousCandidateGateBiasWeightDeltas;
+    double *previousForgetGateValueSumBiasWeightDeltas;
+    double *previousInputGateValueSumBiasWeightDeltas;
+    double *previousOutputGateValueSumBiasWeightDeltas;
+    double *previousCandidateGateValueSumBiasWeightDeltas;
 
     double learningRate;
     double momentum;

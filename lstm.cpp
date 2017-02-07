@@ -168,10 +168,10 @@ LSTM::LSTM(uint32_t _inputCount, uint32_t _outputCount, uint32_t _backpropagatio
     size_t outputCountBasedDoublePointerArraySize=outputCount*sizeof(double*);
     size_t outputCountBasedDoubleArraySize=outputCount*sizeof(double);
     size_t outputAndInputCountBasedDoubleArraySize=inputAndOutputCount*sizeof(double);
-    previousInputGateBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
-    previousForgetGateBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
-    previousOutputGateBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
-    previousCandidateGateBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
+    previousInputGateValueSumBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
+    previousForgetGateValueSumBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
+    previousOutputGateValueSumBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
+    previousCandidateGateValueSumBiasWeightDeltas=(double*)malloc(outputCountBasedDoubleArraySize);
     previousInputGateWeightDeltas=(double**)malloc(outputCountBasedDoublePointerArraySize);
     previousForgetGateWeightDeltas=(double**)malloc(outputCountBasedDoublePointerArraySize);
     previousOutputGateWeightDeltas=(double**)malloc(outputCountBasedDoublePointerArraySize);
@@ -179,10 +179,10 @@ LSTM::LSTM(uint32_t _inputCount, uint32_t _outputCount, uint32_t _backpropagatio
 
     for(uint32_t cell=0;cell<outputCount;cell++)
     {
-        previousInputGateBiasWeightDeltas[cell]=0.0;
-        previousForgetGateBiasWeightDeltas[cell]=0.0;
-        previousOutputGateBiasWeightDeltas[cell]=0.0;
-        previousCandidateGateBiasWeightDeltas[cell]=0.0;
+        previousInputGateValueSumBiasWeightDeltas[cell]=0.0;
+        previousForgetGateValueSumBiasWeightDeltas[cell]=0.0;
+        previousOutputGateValueSumBiasWeightDeltas[cell]=0.0;
+        previousCandidateGateValueSumBiasWeightDeltas[cell]=0.0;
         previousInputGateWeightDeltas[cell]=(double*)malloc(outputAndInputCountBasedDoubleArraySize);
         previousForgetGateWeightDeltas[cell]=(double*)malloc(outputAndInputCountBasedDoubleArraySize);
         previousOutputGateWeightDeltas[cell]=(double*)malloc(outputAndInputCountBasedDoubleArraySize);
@@ -210,10 +210,10 @@ LSTM::~LSTM()
         free(previousOutputGateWeightDeltas[cell]);
         free(previousCandidateGateWeightDeltas[cell]);
     }
-    free(previousInputGateBiasWeightDeltas);
-    free(previousForgetGateBiasWeightDeltas);
-    free(previousOutputGateBiasWeightDeltas);
-    free(previousCandidateGateBiasWeightDeltas);
+    free(previousInputGateValueSumBiasWeightDeltas);
+    free(previousForgetGateValueSumBiasWeightDeltas);
+    free(previousOutputGateValueSumBiasWeightDeltas);
+    free(previousCandidateGateValueSumBiasWeightDeltas);
     free(previousInputGateWeightDeltas);
     free(previousForgetGateWeightDeltas);
     free(previousOutputGateWeightDeltas);
@@ -239,7 +239,7 @@ double *LSTM::process(double *input)
             for(uint32_t i=0;i<outputCount;i++)
                 forgetGateValueSum+=l->forgetGateWeights[cell][inputCount+i]*previousState->output[i];
         }
-        l->forgetGateValues[cell]=sig(forgetGateValueSum+l->forgetGateBiasWeights[cell]);
+        l->forgetGateValues[cell]=sig(forgetGateValueSum+l->forgetGateValueSumBiasWeights[cell]);
 
         // Calculate input gate value
 
@@ -251,7 +251,7 @@ double *LSTM::process(double *input)
             for(uint32_t i=0;i<outputCount;i++)
                 inputGateValueSum+=l->inputGateWeights[cell][inputCount+i]*previousState->output[i];
         }
-        l->inputGateValues[cell]=sig(inputGateValueSum+l->inputGateBiasWeights[cell]);
+        l->inputGateValues[cell]=sig(inputGateValueSum+l->inputGateValueSumBiasWeights[cell]);
 
         // Calculate output gate value
 
@@ -263,7 +263,7 @@ double *LSTM::process(double *input)
             for(uint32_t i=0;i<outputCount;i++)
                 outputGateValueSum+=l->outputGateWeights[cell][inputCount+i]*previousState->output[i];
         }
-        l->outputGateValues[cell]=sig(outputGateValueSum+l->outputGateBiasWeights[cell]);
+        l->outputGateValues[cell]=sig(outputGateValueSum+l->outputGateValueSumBiasWeights[cell]);
 
         // Calculate candidate assessment gate value
 
@@ -275,7 +275,7 @@ double *LSTM::process(double *input)
             for(uint32_t i=0;i<outputCount;i++)
                 candidateGateValueSum+=l->candidateGateWeights[cell][inputCount+i]*previousState->output[i];
         }
-        l->candidateGateValues[cell]=tanh(candidateGateValueSum+l->candidateGateBiasWeights[cell]);
+        l->candidateGateValues[cell]=tanh(candidateGateValueSum+l->candidateGateValueSumBiasWeights[cell]);
 
         // Calculate new cell state
 
@@ -341,7 +341,7 @@ void LSTM::learn(double **desiredOutputs)
         // Here, we have np.dot(self.param.wi.T, di_input)
         // That means:
         // dxc represents all weights
-        // Each weight i in dxc has as its value: sum over cells(sum of the four weights of a cell that have the index i (i,f,o,g), each multiplied by their cell's and weight group's (i,f,o, or g) respective derivative w.r.t. the input))
+        // Each weight i in dxc has as its value: sum over cells*(sum of the four weights of a cell that have the index i (i,f,o,g), each multiplied by their cell's and weight group's (i,f,o, or g) respective derivative w.r.t. the input))
 
         double *dxc=(double*)malloc((inputAndOutputCount)*sizeof(double));
         bool dxcWeightsSet=false;
@@ -349,10 +349,10 @@ void LSTM::learn(double **desiredOutputs)
         for(uint32_t cell=0;cell<outputCount;cell++)
         {
             // For each cell
-            double diff_s=hasHigherState?higherState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToCellStates[cell]:0.0; // Cell state diff: backpropagation through time
+            double diff_s=hasHigherState?higherState->bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastCellStates[cell]:0.0; // Cell state diff: backpropagation through time
             double diff_h=2.0*(thisState->output[cell]-desiredOutputs[availableStepsBack-stepsBack][cell]); //
             if(hasHigherState)
-                diff_h+=higherState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToOutputs[cell];
+                diff_h+=higherState->bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastOutputs[cell];
 
             _ds[cell]=thisState->outputGateValues[cell]*diff_h+diff_s;
             _do[cell]=thisState->cellStates[cell]*diff_h;
@@ -426,15 +426,15 @@ void LSTM::learn(double **desiredOutputs)
                 dxc[inputCount+weightOutput]+=latestState->inputGateWeights[cell][inputCount+weightOutput]*_di_input[cell]+latestState->forgetGateWeights[cell][inputCount+weightOutput]*_df_input[cell]+latestState->outputGateWeights[cell][inputCount+weightOutput]*_do_input[cell]+latestState->candidateGateWeights[cell][inputCount+weightOutput]*_dg_input[cell];
             }
             // bottom_diff_s:
-            thisState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToCellStates[cell]=_ds[cell]*thisState->forgetGateValues[cell];
+            thisState->bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastCellStates[cell]=_ds[cell]*thisState->forgetGateValues[cell];
             if(!dxcWeightsSet)
                 dxcWeightsSet=true;
         }
 
         // bottom_diff_x:
-        memcpy(thisState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToInputs,dxc,inputCount*sizeof(double));
+        memcpy(thisState->bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToInputs,dxc,inputCount*sizeof(double));
         // bottom_diff_h:
-        memcpy(thisState->bottomDerivativesOfLossesFromThisStepOnwardsWithRespectToOutputs,dxc+inputCount,outputCount*sizeof(double));
+        memcpy(thisState->bottomDerivativesOfLossesFromThisStateUpwardsWithRespectToLastOutputs,dxc+inputCount,outputCount*sizeof(double));
 
         free(dxc);
         free(_ds);
@@ -499,26 +499,26 @@ void LSTM::learn(double **desiredOutputs)
             previousOutputGateWeightDeltas[cell][inputCount+outputWeight]=thisOutputGateWeightDelta;
             previousCandidateGateWeightDeltas[cell][inputCount+outputWeight]=thisCandidateGateWeightDelta;
         }
-        double previousInputGateBiasWeightDelta=previousInputGateBiasWeightDeltas[cell];
-        double previousForgetGateBiasWeightDelta=previousForgetGateBiasWeightDeltas[cell];
-        double previousOutputGateBiasWeightDelta=previousOutputGateBiasWeightDeltas[cell];
-        double previousCandidateGateBiasWeightDelta=previousCandidateGateBiasWeightDeltas[cell];
-        double currentInputGateBiasWeight=latestState->inputGateBiasWeights[cell];
-        double currentForgetGateBiasWeight=latestState->forgetGateBiasWeights[cell];
-        double currentOutputGateBiasWeight=latestState->outputGateBiasWeights[cell];
-        double currentCandidateGateBiasWeight=latestState->candidateGateBiasWeights[cell];
+        double previousInputGateBiasWeightDelta=previousInputGateValueSumBiasWeightDeltas[cell];
+        double previousForgetGateBiasWeightDelta=previousForgetGateValueSumBiasWeightDeltas[cell];
+        double previousOutputGateBiasWeightDelta=previousOutputGateValueSumBiasWeightDeltas[cell];
+        double previousCandidateGateBiasWeightDelta=previousCandidateGateValueSumBiasWeightDeltas[cell];
+        double currentInputGateBiasWeight=latestState->inputGateValueSumBiasWeights[cell];
+        double currentForgetGateBiasWeight=latestState->forgetGateValueSumBiasWeights[cell];
+        double currentOutputGateBiasWeight=latestState->outputGateValueSumBiasWeights[cell];
+        double currentCandidateGateBiasWeight=latestState->candidateGateValueSumBiasWeights[cell];
         double thisInputGateBiasWeightDelta=(1.0-momentum)*-learningRate*bi_diff[cell]+momentum*previousInputGateBiasWeightDelta-weightDecay*currentInputGateBiasWeight;
         double thisForgetGateBiasWeightDelta=(1.0-momentum)*-learningRate*bf_diff[cell]+momentum*previousForgetGateBiasWeightDelta-weightDecay*currentForgetGateBiasWeight;
         double thisOutputGateBiasWeightDelta=(1.0-momentum)*-learningRate*bo_diff[cell]+momentum*previousOutputGateBiasWeightDelta-weightDecay*currentOutputGateBiasWeight;
         double thisCandidateGateBiasWeightDelta=(1.0-momentum)*-learningRate*bg_diff[cell]+momentum*previousCandidateGateBiasWeightDelta-weightDecay*currentCandidateGateBiasWeight;
-        latestState->inputGateBiasWeights[cell]+=thisInputGateBiasWeightDelta;
-        latestState->forgetGateBiasWeights[cell]+=thisForgetGateBiasWeightDelta;
-        latestState->outputGateBiasWeights[cell]+=thisOutputGateBiasWeightDelta;
-        latestState->candidateGateBiasWeights[cell]+=thisCandidateGateBiasWeightDelta;
-        previousInputGateBiasWeightDeltas[cell]=thisInputGateBiasWeightDelta;
-        previousForgetGateBiasWeightDeltas[cell]=thisForgetGateBiasWeightDelta;
-        previousOutputGateBiasWeightDeltas[cell]=thisOutputGateBiasWeightDelta;
-        previousCandidateGateBiasWeightDeltas[cell]=thisCandidateGateBiasWeightDelta;
+        latestState->inputGateValueSumBiasWeights[cell]+=thisInputGateBiasWeightDelta;
+        latestState->forgetGateValueSumBiasWeights[cell]+=thisForgetGateBiasWeightDelta;
+        latestState->outputGateValueSumBiasWeights[cell]+=thisOutputGateBiasWeightDelta;
+        latestState->candidateGateValueSumBiasWeights[cell]+=thisCandidateGateBiasWeightDelta;
+        previousInputGateValueSumBiasWeightDeltas[cell]=thisInputGateBiasWeightDelta;
+        previousForgetGateValueSumBiasWeightDeltas[cell]=thisForgetGateBiasWeightDelta;
+        previousOutputGateValueSumBiasWeightDeltas[cell]=thisOutputGateBiasWeightDelta;
+        previousCandidateGateValueSumBiasWeightDeltas[cell]=thisCandidateGateBiasWeightDelta;
         free(wi_diff[cell]);
         free(wf_diff[cell]);
         free(wo_diff[cell]);

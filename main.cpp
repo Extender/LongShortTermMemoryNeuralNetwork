@@ -4,11 +4,10 @@
 #include <stdlib.h>
 #include <iostream>
 #include <stdint.h>
+#include <limits>
 
 #include "io.h"
 #include "text.h"
-
-#include <windows.h>
 
 #include "lstm.h"
 
@@ -18,7 +17,7 @@ string doubleArrayToString(double *array,uint32_t elementCount,bool includeHighe
 {
     string out;
     out+="[";
-    double highest=-9999.99;
+    double highest=std::numeric_limits<double>::min();
     uint32_t highestIndex;
     for(uint32_t i=0;i<elementCount;i++)
     {
@@ -53,13 +52,13 @@ int main(int argc, char *argv[])
     (description of a single-layer python LSTM this implementation is based on)
     */
 
-    char *helloString="hello";
+    const char *helloString="hello";
     uint32_t inputCount=3; // h, e, l
     uint32_t outputCount=3; // e, l, o
     uint32_t additionalMemoryCellCount=3; // These cells help the LSTM by effectively turning into adjustable parameters during training
     uint32_t effectiveOutputCount=outputCount+additionalMemoryCellCount;
     uint32_t backpropagationSteps=3;
-    double learningRate=0.1; // Do not set the learning rate too high, or else the weights may explode!
+    double learningRate=0.1;
     double momentum=0.9;
     double weightDecay=0.0001;
     LSTM *lstm=new LSTM(inputCount,effectiveOutputCount,backpropagationSteps,learningRate,momentum,weightDecay);
@@ -67,6 +66,10 @@ int main(int argc, char *argv[])
     char *str;
     double **desiredOutputs=(double**)malloc((backpropagationSteps+1)*sizeof(double*));
     // Only call learn() after the last step!
+
+    vector<int> accuracyVector;
+    double accuracySum=0.0;
+
     for(uint64_t current=0;;current++)
     {
         double *input=(double*)malloc(inputCount*sizeof(double));
@@ -110,6 +113,33 @@ int main(int argc, char *argv[])
         cout<<"Desired output:   "<<doubleArrayToString(desiredOutput,outputCount /*Do not include the additional memory cells*/,false)<<endl;
 
         desiredOutputs[currentPos]=desiredOutput;
+
+        uint8_t highestIndex=255;
+        double highestValue=std::numeric_limits<double>::min();
+        for(uint8_t i=0;i<effectiveOutputCount;i++)
+        {
+            if(output[i]>highestValue) // Not newOutput!
+            {
+                highestIndex=i;
+                highestValue=output[i];
+            }
+        }
+
+        bool wasCorrect=(highestIndex==desiredOut);
+        int avSize=accuracyVector.size();
+        if(avSize>=100)
+        {
+            accuracySum-=accuracyVector.at(0);
+            accuracyVector.erase(accuracyVector.begin());
+        }
+        else
+            avSize++;
+        accuracyVector.push_back(wasCorrect);
+        accuracySum+=wasCorrect?1.0:0.0;
+
+        str=text::doubleToStringWithFixedPrecision((accuracySum/((double)avSize))*100.0,0);
+        cout<<"Accuracy of last 100 outputs :    "<<str<<"%"<<endl;
+        free(str);
 
         if(currentPos==3)
         {
